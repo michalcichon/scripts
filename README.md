@@ -5,3 +5,7 @@ These are some of my scripts I use on my daily basis. Some of them are simple Ru
 ## Scripts list
 
 **[MissingLocalizables](MissingLocalizables)** - to check if localizables have no duplicates, missing keys and so on.
+
+```
+ruby Src/missing-localizables.rb <path/to/localizables> <base-lang>
+```
