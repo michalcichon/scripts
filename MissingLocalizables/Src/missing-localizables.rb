@@ -64,8 +64,8 @@ subdir_list = Dir["*"].reject{ |o| not File.directory?(o) or !o.include? LPROJ }
 subdir_list.each { |subdir|
     next if subdir.include? base_lang
     lang_path = path + subdir + "/" + LOCALIZABLE
-    # puts lang_path
     next if !File.exist?(lang_path)
+    
     str = get_string(lang_path)
     b = str.split(";\n")
     sub_hash = Hash.new
@@ -100,18 +100,3 @@ subdir_list.each { |subdir|
         puts "----"
     end
 }
-
-# a = base_str.scan(/"[^"]+"\s*=\s*".*"\s*;/m)
-
-# puts base_contents
-
-# a = base_str.split(/"[^"]+"\s*=\s*"[^"]*"\s*;/)
-
-# puts a
-
-# base_dict = Hash.new
-
-
-# File.open(base_file_path).each do |line|
-#     puts ":" + line
-# end
