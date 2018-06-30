@@ -14,8 +14,8 @@ def get_string(filepath)
 end
 
 if path.nil? || base_lang.nil?
-    puts "Usage: \t\t" + __FILE__ + " <path_to_localizables> <base_language>"
-    puts "Example: \t" + __FILE__ + " ../../path/to/my/project/ en"
+    puts "Usage: \t\t\033[1m" + __FILE__ + "\033[0m <path_to_localizables> <base_language>"
+    puts "Example: \t\033[1m" + __FILE__ + "\033[0m ../../path/to/my/project/ en"
     abort
 end
 

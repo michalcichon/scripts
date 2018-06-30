@@ -9,3 +9,9 @@ These are some of my scripts I use on my daily basis. Some of them are simple Ru
 ```
 ruby Src/missing-localizables.rb <path/to/localizables> <base-lang>
 ```
+
+**[ListSearch](ListSearch)** - to check which elements of the list are found in a directory's contents.
+
+```
+ruby Src/list-search.rb <path/to/list> <path/to/directory>
+```
