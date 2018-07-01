@@ -70,7 +70,7 @@ subdir_list.each { |subdir|
     b = str.split(";\n")
     sub_hash = Hash.new
     b.each { |line|
-        t = line.split(/\s*=\s*/)
+        t = line.split(/\s*=\s*/, 2)
         key = t[0].strip
         value = t[1].strip
         
