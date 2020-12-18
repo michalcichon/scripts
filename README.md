@@ -15,3 +15,5 @@ ruby Src/missing-localizables.rb <path/to/localizables> <base-lang>
 ```
 ruby Src/list-search.rb <path/to/list> <path/to/directory>
 ```
+
+**[XcodeCleanup](XcodeCleanup)** - to cleanup common Xcode paths.
