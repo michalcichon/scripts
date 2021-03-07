@@ -8,9 +8,7 @@ os.chdir(directory)
 files = []
 for file in glob.glob("*.nes"):
     if "(U)" in file:
-        if pattern.search(file):
-            print ("matching " +file)
-        else:
+        if not pattern.search(file) or "[!]" in file:
             files.append(file)
 
 print(files)
