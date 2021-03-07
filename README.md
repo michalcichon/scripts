@@ -16,7 +16,7 @@ ruby Src/missing-localizables.rb <path/to/localizables> <base-lang>
 ruby Src/list-search.rb <path/to/list> <path/to/directory>
 ```
 
-** [RomsFilter](RomsFilter)** - copy filtered stabile NES roms into a subdirectory.
+**[RomsFilter](RomsFilter)** - copy filtered stabile NES roms into a subdirectory.
 
 ```sh
 ./RomsFilter/roms-filter.py <path/to/roms>
