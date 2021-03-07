@@ -2,7 +2,7 @@
 
 import sys, os, glob, re
 
-pattern = re.compile("(\w+)\s?(?:\[([^\]]+)\])?")
+pattern = re.compile("\[(.*?)\]")
 directory = sys.argv[1] if len(sys.argv) == 2 else os.path.dirname(os.path.realpath(__file__))
 os.chdir(directory)
 files = []
