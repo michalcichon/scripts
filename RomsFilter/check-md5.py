@@ -2,6 +2,10 @@
 
 import sys, os, glob, shutil, hashlib
 
+# Basic implementation of script to check if we have duplicates in the rom directory.
+# - Checks only MD5, we could use more sophiscated methods like a header check
+# - It only prints suspecious files, the real cleanup needs to be done manually
+
 def get_md5_from_file(file):
     md5_hash = hashlib.md5()
     a_file = open(file, "rb")
