@@ -39,7 +39,7 @@ def run_praw(client_id, client_secret, password, username):
     for s in saved:
         try:
             print("Try removing {}".format(s.permalink))
-            # s.unsave()
+            s.unsave()
         except AttributeError as err:
             print(err)
 
