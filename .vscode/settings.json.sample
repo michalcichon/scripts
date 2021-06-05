@@ -1,0 +1,7 @@
+{
+    "python.pythonPath": "/Users/michal/.pyenv/versions/3.9.4/bin/python",
+    "reddit.CLIENT_ID": "paste_client_id_here",
+    "reddit.CLIENT_SECRET": "paste_client_secret_here",
+    "reddit.PASSWORD": "paste_password_here",
+    "reddit.USERNAME": "paste_username_here"
+}

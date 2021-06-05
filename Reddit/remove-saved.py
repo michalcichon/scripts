@@ -5,7 +5,6 @@ Needs Python 3+ and Praw 5.3.0
 """
 import argparse
 import praw
-import os
 
 def create_parser():
     """Create command line argument parser"""
@@ -47,7 +46,6 @@ def run_praw(client_id, client_secret, password, username):
 
 def main():
     """ Run the program """
-    # print(os.getenv('REDDIT_CLIENT_ID'))
     parser = create_parser()
     args = parser.parse_args()
     run_praw(args.client_id, args.client_secret, args.password, args.username)

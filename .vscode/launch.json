@@ -14,10 +14,8 @@
             "request": "launch",
             "program": "./Reddit/remove-saved.py",
             "console": "integratedTerminal",
-            // "preLaunchTask": "load-reddit-secrets",
-            "envFile": "${workspaceFolder}/Reddit/secrets.env",
             "args": [
-                "${env:REDDIT_CLIENT_ID}", "${env:REDDIT_CLIENT_SECRET}", "${env:REDDIT_PASSWORD}", "${env:REDDIT_USERNAME}"
+                "${config:reddit.CLIENT_ID}", "${config:reddit.CLIENT_SECRET}", "${config:reddit.PASSWORD}", "${config:reddit.USERNAME}"
             ]
         }
     ]
