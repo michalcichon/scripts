@@ -5,7 +5,7 @@ Needs Python 3+ and Praw 5.3.0
 """
 import argparse
 import praw
-
+import os
 
 def create_parser():
     """Create command line argument parser"""
@@ -32,20 +32,26 @@ def run_praw(client_id, client_secret, password, username):
                     password=password, username=username,
                     user_agent=user_agent)
 
-    saved = r.user.me().saved(limit=None)
+    try:
+        saved = r.user.me().saved(limit=None)
+    except Exception as err:
+        print(err)
+        exit(1)
     for s in saved:
         try:
-            s.unsave()
+            print("Try removing {}".format(s.permalink))
+            # s.unsave()
         except AttributeError as err:
             print(err)
 
 
 def main():
     """ Run the program """
+    # print(os.getenv('REDDIT_CLIENT_ID'))
     parser = create_parser()
     args = parser.parse_args()
-    # print(args.password)
     run_praw(args.client_id, args.client_secret, args.password, args.username)
+
 
 
 if __name__ == "__main__":

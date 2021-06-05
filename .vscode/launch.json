@@ -1,0 +1,24 @@
+{
+    "version": "2.0.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Reddit/remove-saved",
+            "type": "python",
+            "request": "launch",
+            "program": "./Reddit/remove-saved.py",
+            "console": "integratedTerminal",
+            // "preLaunchTask": "load-reddit-secrets",
+            "envFile": "${workspaceFolder}/Reddit/secrets.env",
+            "args": [
+                "${env:REDDIT_CLIENT_ID}", "${env:REDDIT_CLIENT_SECRET}", "${env:REDDIT_PASSWORD}", "${env:REDDIT_USERNAME}"
+            ]
+        }
+    ]
+}
