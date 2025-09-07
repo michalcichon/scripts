@@ -112,9 +112,6 @@ main(){
   info "Rebuild import…"
   launcher rebuild import
 
-  info "Rebuild app (to zastosuje hooki z app.yml)…"
-  launcher rebuild app
-
   tune_mariadb
   run_import
 
