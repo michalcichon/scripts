@@ -109,14 +109,18 @@ main(){
     [[ "$NUKE_REDIS"    == "1" ]] && rm -rf redis_data
   popd >/dev/null
 
-  info "Rebuild app (to zastosuje hooki z app.yml)…"
-  launcher rebuild app
-
   info "Rebuild import…"
   launcher rebuild import
 
+  info "Rebuild app (to zastosuje hooki z app.yml)…"
+  launcher rebuild app
+
   tune_mariadb
   run_import
+
+  info "Wyłączam import i stawiam app…"
+  launcher stop import || true
+  launcher rebuild app
 
   info "DONE. Jeśli trzeba, możesz teraz zrebake’ować posty:"
   echo "  cd /var/discourse && ./launcher enter app"
