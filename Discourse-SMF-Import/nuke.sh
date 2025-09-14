@@ -123,6 +123,65 @@ tune_mariadb(){
 }
 
 ########################
+# Custom importer 
+########################
+
+use_custom_importer(){
+  info "Sprawdzam własny smf2.rb…"
+  # Ścieżki w KONTENERZE 'import' (mount /shared/…)
+  CANDIDATES=(
+    "$SMF_ROOT_IN_IMPORT/smf2.rb"  # domyślnie: /shared/import/smf/smf2.rb
+    "/shared/smf/smf2.rb"          # alternatywa: /shared/smf/smf2.rb
+  )
+  docker exec import bash -lc 'set -e; mkdir -p /var/www/discourse/script/import_scripts'
+  for p in "${CANDIDATES[@]}"; do
+    if docker exec import bash -lc "[ -f \"$p\" ]"; then
+      info "Znalazłem: $p — podmieniam importer."
+      docker exec import bash -lc "
+        set -e
+        cd /var/www/discourse/script/import_scripts
+        if [ -f smf2.rb ]; then cp smf2.rb smf2.rb.factory.\$(date +%F_%H%M%S); fi
+        cp \"$p\" smf2.rb
+        chmod 644 smf2.rb
+        head -n 1 smf2.rb || true
+      "
+      return 0
+    fi
+  done
+  info "Nie znaleziono własnego smf2.rb (pomijam podmianę)."
+}
+
+########################
+# Custom site settings
+########################
+
+enforce_site_settings(){
+  local CONTAINER="${1:?podaj nazwę kontenera (import|app)}"
+  info "Wymuszam ustawienia witryny w kontenerze '$CONTAINER'…"
+  docker exec -i "$CONTAINER" bash -lc 'set -e
+cat > /tmp/enforce.rb <<'"'"'RUBY'"'"'
+SiteSetting.title = "ForumIQ"
+SiteSetting.enable_names = true
+SiteSetting.display_name_on_posts = true
+SiteSetting.prioritize_username_in_ux = false
+SiteSetting.use_name_for_username_suggestions = true
+
+base = (SiteSetting.authorized_extensions.presence || "jpg|jpeg|png|gif|heic|heif|webp|avif").split("|")
+need = %w[pdf doc docx xls xlsx odt ods odp odg mp3 mp4 avi mkv]
+SiteSetting.authorized_extensions = (base | need).join("|")
+
+SiteSetting.max_attachment_size_kb = 524_288
+
+puts "OK: title=#{SiteSetting.title}, authorized_extensions=#{SiteSetting.authorized_extensions}"
+RUBY
+
+su - discourse -c "cd /var/www/discourse && RAILS_ENV=production bundle exec rails r /tmp/enforce.rb"
+rm -f /tmp/enforce.rb
+'
+}
+
+
+########################
 # Import SMF → Discourse
 ########################
 run_import(){
@@ -172,7 +231,9 @@ main(){
   # 1) Najpierw stawiamy 'import' (on startuje własnego Postgresa)
   info "Rebuild import…"
   launcher rebuild import
+  enforce_site_settings import
 
+  use_custom_importer
   tune_mariadb
   run_import
 
@@ -180,6 +241,7 @@ main(){
   info "Wyłączam import i stawiam app…"
   launcher stop import || true
   launcher rebuild app
+  enforce_site_settings app
 
   info "DONE. Jeśli trzeba, możesz teraz zrebake’ować posty:"
   echo "  cd /var/discourse && ./launcher enter app"
