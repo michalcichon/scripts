@@ -1,38 +1,75 @@
 #!/usr/bin/env bash
+# Resetuje instancję Discourse do „zera”, stawia kontener import, uruchamia import SMF,
+# a potem podnosi docelowy 'app'. Idempotentne.
+#
+# ZALECENIA:
+#  - Uruchamiaj jako root:  sudo YES=1 /var/discourse/shared/standalone/nuke.sh
+#  - Domyślnie importer czyta DB z /shared/import/smf/Settings.php (wewnątrz kontenera).
+#    Upewnij się, że ten mount istnieje w kontenerze 'import' (containers/import.yml).
+#
+# SZYBKIE PRZEŁĄCZNIKI (env):
+#   YES=1                 # pomiń pytanie o potwierdzenie
+#   RUN_IMPORT=0          # zrób tylko wipe + rebuild kontenerów (bez importu)
+#   OVERRIDE_DB_HOST=IP   # jeśli Settings.php ma 'localhost' i trzeba nadpisać host (np. 172.17.0.1)
+#   DB_PASS=pass          # (opcjonalne) pozwala podkręcić parametry MariaDB (tuning)
+#
+# PRZYKŁADY:
+#   sudo YES=1 /var/discourse/shared/standalone/nuke.sh
+#   sudo YES=1 RUN_IMPORT=0 /var/discourse/shared/standalone/nuke.sh
+#   sudo YES=1 OVERRIDE_DB_HOST=172.17.0.1 /var/discourse/shared/standalone/nuke.sh
+
 set -euo pipefail
 
-# ======= KONFIG DO EDYCJI =======
-DISCOURSE_DIR="/var/discourse"
+############################################
+# Napraw PATH pod sudo + wrapper na docker #
+############################################
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+DOCKER_BIN="${DOCKER_BIN:-$(command -v docker 2>/dev/null || true)}"
+[[ -z "$DOCKER_BIN" && -x /usr/bin/docker ]] && DOCKER_BIN="/usr/bin/docker"
+if [[ -z "$DOCKER_BIN" || ! -x "$DOCKER_BIN" ]]; then
+  echo "ERROR: nie znalazłem binarki 'docker'. Zainstaluj docker albo ustaw DOCKER_BIN=/pełna/ścieżka." >&2
+  exit 1
+fi
+docker() { "$DOCKER_BIN" "$@"; }
+
+#################
+# KONFIG DOMYŚLNY
+#################
+DISCOURSE_DIR="${DISCOURSE_DIR:-/var/discourse}"
 
 # Co kasujemy
-NUKE_POSTGRES=1
-NUKE_UPLOADS=1
-NUKE_REDIS=0          # ustaw 1 jeśli chcesz też zresetować redis
+NUKE_POSTGRES="${NUKE_POSTGRES:-1}"
+NUKE_UPLOADS="${NUKE_UPLOADS:-1}"
+NUKE_REDIS="${NUKE_REDIS:-0}"
 
 # Czy uruchomić import po rebuild
-RUN_IMPORT=1
+RUN_IMPORT="${RUN_IMPORT:-1}"
 
-# Kontener z MariaDB SMF:
-SMF_DB_CONTAINER="smf-maria"
+# Kontener z MariaDB SMF (nazwa w `docker ps`)
+SMF_DB_CONTAINER="${SMF_DB_CONTAINER:-smf-maria}"
 
-# Połączenie do bazy SMF (domyślnie z Twojego setupu)
-DB_HOST="${DB_HOST:-172.17.0.1}"
-DB_PORT="${DB_PORT:-3306}"
+# (opcjonalnie) dane do tuningu MariaDB; nie są używane do importu!
 DB_USER="${DB_USER:-root}"
-DB_PASS="${DB_PASS:-pass}"          # UWAGA: będzie użyte jako -pHASLO (bez spacji)
-DB_NAME="${DB_NAME:-smfdb}"
-DB_PREFIX="${DB_PREFIX:-smf2_}"     # np. smf_ / smf2_ lub puste
+DB_PASS="${DB_PASS:-}"       # jeśli puste → tuning pominięty
+
+# Strefa czasu dla importera (żeby nie wymagał PHP CLI)
 TZ="${TZ:-Europe/Warsaw}"
 
-# Ścieżki do źródeł SMF
+# Ścieżki do źródeł SMF:
+#  - na hoście:
 SMF_ROOT_HOST="${SMF_ROOT_HOST:-/var/discourse/shared/standalone/import/smf}"
-SMF_ROOT_IN_IMPORT="/shared/import/smf"
+#  - wewnątrz kontenera 'import' (musi się zgadzać z mountem w containers/import.yml):
+SMF_ROOT_IN_IMPORT="${SMF_ROOT_IN_IMPORT:-/shared/import/smf}"
 
-# Wymuś bez potwierdzenia: ustaw YES=1
+# (opcjonalnie) nadpisanie hosta DB (gdy w Settings.php jest 'localhost' niewłaściwy w dockerze)
+OVERRIDE_DB_HOST="${OVERRIDE_DB_HOST:-}"
+
 YES="${YES:-0}"
-# ======= KONIEC KONFIGU ========
 
-die(){ echo "ERROR: $*" >&2; exit 1; }
+############
+# HELPERY
+############
+die(){ echo -e "\033[1;31mERROR:\033[0m $*" >&2; exit 1; }
 info(){ echo -e "\033[1;36m$*\033[0m"; }
 
 require_root(){
@@ -54,10 +91,27 @@ confirm(){
 
 launcher(){ (cd "$DISCOURSE_DIR" && ./launcher "$@"); }
 
+########################
+# Tuning MariaDB (opc.)
+########################
 tune_mariadb(){
   info "Podkręcanie parametrów MariaDB (timeouts/packet)…"
+  # Upewnij się, że kontener MariaDB działa
+  if ! docker ps --format '{{.Names}}' | grep -qx "$SMF_DB_CONTAINER"; then
+    info "Kontener $SMF_DB_CONTAINER nie działa – próbuję uruchomić…"
+    docker start "$SMF_DB_CONTAINER" >/dev/null 2>&1 || {
+      echo "WARN: Nie udało się uruchomić $SMF_DB_CONTAINER. Pomijam tuning." >&2
+      return 0
+    }
+  fi
+  # Bez hasła nie tuninguje (import i tak zadziała)
+  if [[ -z "$DB_PASS" ]]; then
+    echo "INFO: DB_PASS nieustawione → pomijam tuning MariiDB." >&2
+    return 0
+  fi
+
   docker exec -i "$SMF_DB_CONTAINER" mariadb -u"$DB_USER" -p"$DB_PASS" -e "
-    SET GLOBAL max_allowed_packet=1073741824;
+    SET GLOBAL max_allowed_packet=1073741824;  -- 1GB
     SET GLOBAL net_read_timeout=1800;
     SET GLOBAL net_write_timeout=1800;
     SET GLOBAL wait_timeout=86400;
@@ -65,37 +119,42 @@ tune_mariadb(){
     SET GLOBAL innodb_lock_wait_timeout=300;
     SHOW VARIABLES WHERE Variable_name IN
     ('max_allowed_packet','net_read_timeout','net_write_timeout','wait_timeout','interactive_timeout','innodb_lock_wait_timeout');
-  " || echo "WARN: Nie udało się podkręcić MariiDB (pomijam)."
+  " || echo "WARN: Tuning MariiDB nie powiódł się (pomijam)."
 }
 
+########################
+# Import SMF → Discourse
+########################
 run_import(){
   [[ "$RUN_IMPORT" == "1" ]] || { info "RUN_IMPORT=0 → pomijam uruchomienie importu."; return 0; }
+
   info "Start importu SMF…"
 
-  # sprawdź, czy w kontenerze widać pliki SMF
   if [[ ! -e "$SMF_ROOT_HOST" ]]; then
-    die "Brak źródeł SMF pod $SMF_ROOT_HOST"
+    die "Brak źródeł SMF pod $SMF_ROOT_HOST (na hoście). Upewnij się, że Settings.php i załączniki są na miejscu."
   fi
 
-  local PFX_ARG=""
-  [[ -n "$DB_PREFIX" ]] && PFX_ARG="-f $DB_PREFIX"
+  local HOST_ARG=""
+  [[ -n "$OVERRIDE_DB_HOST" ]] && HOST_ARG="-h $OVERRIDE_DB_HOST"
 
-  # RACK_MINI_PROFILER=off + RAILS_ENV=production + hasło bez spacji: -pHASLO
+  # Uwaga: NIE podajemy -p/-u/-d/-f → importer czyta wszystko z Settings.php.
+  # Podajemy tylko strefę czasu (żeby nie wymagał PHP CLI) i ewentualny override hosta DB.
   local IMPORT_CMD
   IMPORT_CMD="su - discourse -c 'cd /var/www/discourse && \
     RACK_MINI_PROFILER=off RAILS_ENV=production \
     bundle exec ruby script/import_scripts/smf2.rb \
-      $SMF_ROOT_IN_IMPORT -h $DB_HOST -P $DB_PORT -u $DB_USER -p$DB_PASS -d $DB_NAME $PFX_ARG -t $TZ'"
+      $SMF_ROOT_IN_IMPORT $HOST_ARG -t $TZ'"
 
-  # odpal komendę wewnątrz kontenera 'import'
   docker exec -i import bash -lc "$IMPORT_CMD"
 }
 
+########
+# MAIN
+########
 main(){
   require_root "$@"
-  command -v docker >/dev/null || die "Brak docker w PATH"
+  command -v "$DOCKER_BIN" >/dev/null || die "Brak docker w PATH"
   [[ -d "$DISCOURSE_DIR" ]] || die "Nie znaleziono $DISCOURSE_DIR"
-
   confirm
 
   info "Zatrzymuję kontenery…"
@@ -107,14 +166,17 @@ main(){
     [[ "$NUKE_POSTGRES" == "1" ]] && rm -rf postgres_data
     [[ "$NUKE_UPLOADS"  == "1" ]] && rm -rf uploads
     [[ "$NUKE_REDIS"    == "1" ]] && rm -rf redis_data
+    rm -rf postgres_run   # usuń ewentualny stary socket PG (zapobiega kolizji przy 'import')
   popd >/dev/null
 
+  # 1) Najpierw stawiamy 'import' (on startuje własnego Postgresa)
   info "Rebuild import…"
   launcher rebuild import
 
   tune_mariadb
   run_import
 
+  # 2) Po imporcie: wygaszamy import i stawiamy docelowy app (z hookami z app.yml)
   info "Wyłączam import i stawiam app…"
   launcher stop import || true
   launcher rebuild app
