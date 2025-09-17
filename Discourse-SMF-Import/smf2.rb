@@ -31,6 +31,7 @@ class ImportScripts::Smf2 < ImportScripts::Base
   attr_reader :options
 
   def initialize(options)
+    puts "ForumIQ version with polls"
     if options.timezone.nil?
       $stderr.puts "No source timezone given and autodetection from PHP failed."
       $stderr.puts "Use -t option to specify correct source timezone:"
@@ -198,6 +199,59 @@ class ImportScripts::Smf2 < ImportScripts::Base
     end
   end
 
+  # --- POMOCNICZE: render ankiety jako zwykły Markdown ---
+  def build_poll_markdown(poll, choices)
+    q = decode_entities(poll[:question].to_s.strip)
+    total_votes = choices.sum { |c| c[:votes].to_i }
+    max_votes = poll[:max_votes].to_i
+    expire = (poll[:expire_time].to_i > 0) ? Time.zone.at(poll[:expire_time].to_i).strftime("%Y-%m-%d") : nil
+    locked = poll[:voting_locked].to_i == 1
+
+    lines = choices.map do |c|
+      label = decode_entities(c[:label].to_s.strip)
+      v = c[:votes].to_i
+      pct = total_votes > 0 ? ((100.0 * v) / total_votes).round : 0
+      "- [#{pct}%] #{label} — #{v} gł."
+    end
+
+    meta = []
+    meta << "Głosujących: #{total_votes}"
+    meta << "Maks. głosów na osobę: #{max_votes > 0 ? max_votes : 1}"
+    meta << "Głosowanie zakończone: #{expire}" if expire
+    meta << "Zablokowana: tak" if locked
+
+    <<~MD
+
+    <!-- imported_poll: #{poll[:id_poll]} -->
+    > ### [Ankieta] #{q}
+    >
+    #{lines.join("\n")}
+    >
+    > **#{meta.join(' · ')}**
+    MD
+  end
+
+  def fetch_poll_for_first_msg(first_msg_id, connection:)
+    # Szukamy ankiety dla tematu, którego pierwszym postem jest first_msg_id
+    poll = query(<<-SQL, connection: connection, as: :array).first
+      SELECT p.id_poll, p.question, p.voting_locked, p.expire_time, p.max_votes
+      FROM {prefix}topics t
+      JOIN {prefix}polls p ON p.id_poll = t.id_poll
+      WHERE t.id_first_msg = #{first_msg_id} AND t.id_poll > 0
+    SQL
+    return nil unless poll
+
+    choices = query(<<-SQL, connection: connection, as: :array)
+      SELECT id_choice, label, votes
+      FROM {prefix}poll_choices
+      WHERE id_poll = #{poll[:id_poll]}
+      ORDER BY id_choice ASC
+    SQL
+
+    [poll, choices]
+  end
+
+
   def import_posts
     puts "", "creating posts"
     spinner = %w[/ - \\ |].cycle
@@ -277,6 +331,18 @@ class ImportScripts::Smf2 < ImportScripts::Base
         puts e.backtrace.join("\n")
         post[:raw] = "-- MESSAGE SKIPPED --"
       end
+
+      # === DODANE: jeśli to pierwszy post w temacie, spróbuj dodać ankietę jako tekst ===
+      if message[:id_msg] == message[:id_first_msg]
+        if (poll_data = fetch_poll_for_first_msg(message[:id_first_msg], connection: db2))
+          poll, choices = poll_data
+          unless post[:raw].include?("<!-- imported_poll: #{poll[:id_poll]} -->")
+            post[:raw] = "#{post[:raw]}\n\n#{build_poll_markdown(poll, choices)}"
+          end
+        end
+      end
+      # === KONIEC DODANIA ===
+
       next post
     end
   end
