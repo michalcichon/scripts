@@ -499,6 +499,10 @@ class ImportScripts::Smf2 < ImportScripts::Base
       username: options.username,
       password: options.password,
       database: options.database,
+      reconnect: true,
+      read_timeout: 1200,
+      write_timeout: 1200,
+      connect_timeout: 10
     )
   end
 
