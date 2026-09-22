@@ -1,0 +1,26 @@
+#!/bin/bash
+# Automatically prepend JIRA issue key (e.g. XYZ-1234)
+# extracted from branch name to commit message
+
+REGEX_ISSUE_ID="[A-Z]{2,10}-[0-9]+"
+
+# Get current branch name (ignore detached HEAD)
+BRANCH_NAME=$(git symbolic-ref --short HEAD 2>/dev/null) || exit 0
+
+# Extract issue ID from branch name. Branch names are written in any case
+# (feat/xyz-1234-...), the key is always uppercase in the message.
+# grep -o prints every match, so keep the first one only.
+ISSUE_ID=$(echo "$BRANCH_NAME" | grep -o -iE "$REGEX_ISSUE_ID" | head -1 | tr '[:lower:]' '[:upper:]')
+
+# If no issue ID found, do nothing
+[[ -z "$ISSUE_ID" ]] && exit 0
+
+# Already prefixed (a hand-written message, or an --amend of one): leave it alone.
+grep -qE "^$ISSUE_ID: " "$1" && exit 0
+
+# Prepend ISSUE_ID to the first line of the commit message
+# Create a backup (.bak) for portability (macOS / GNU sed)
+sed -i.bak "1s/^/$ISSUE_ID: /" "$1"
+rm -f "$1.bak"
+
+exit 0
